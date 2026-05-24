@@ -1,0 +1,138 @@
+{% extends 'analytics/base.html' %}
+
+{% block title %}Анализ панели: {{ panel.name }}{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-12">
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <h2>Анализ панели: {{ panel.name }}</h2>
+            <a href="{% url 'dashboard' %}" class="btn btn-secondary">Назад в панель управления</a>
+        </div>
+
+        {% if error %}
+        <div class="alert alert-warning text-center py-5">
+            <h4>{{ error }}</h4>
+            <p>Загрузите CSV-файл для этой панели или измените фильтры дат, чтобы провести анализ.</p>
+            <div class="d-flex justify-content-center gap-3 mt-3">
+                <a href="{% url 'upload_csv' %}" class="btn btn-primary">Перейти к загрузке</a>
+                <a href="{% url 'panel_analysis' panel.id %}" class="btn btn-outline-secondary">Сбросить фильтры</a>
+            </div>
+        </div>
+        {% else %}
+        <!-- Фильтр дат -->
+        <div class="card shadow-sm mb-4">
+            <div class="card-body">
+                <form method="get" class="row g-3 align-items-end">
+                    <div class="col-md-4">
+                        <label for="start_date" class="form-label">Дата начала</label>
+                        <input type="date" name="start_date" id="start_date" class="form-control" value="{{ start_date }}">
+                    </div>
+                    <div class="col-md-4">
+                        <label for="end_date" class="form-label">Дата окончания</label>
+                        <input type="date" name="end_date" id="end_date" class="form-control" value="{{ end_date }}">
+                    </div>
+                    <div class="col-md-4 d-flex gap-2">
+                        <button type="submit" class="btn btn-primary w-100">Применить фильтр</button>
+                        <a href="{% url 'panel_analysis' panel.id %}" class="btn btn-outline-secondary w-100">Сброс</a>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <div class="row mb-4">
+            <div class="col-md-4">
+                <div class="card shadow-sm bg-light border-0">
+                    <div class="card-body text-center">
+                        <h6 class="text-muted mb-2">Всего точек данных</h6>
+                        <h3 class="fw-bold">{{ total_points }}</h3>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="card shadow-sm {% if has_anomalies %}bg-danger text-white{% else %}bg-success text-white{% endif %} border-0">
+                    <div class="card-body text-center">
+                        <h6 class="mb-2 opacity-75">Обнаружено аномалий</h6>
+                        <h3 class="fw-bold">{{ anomaly_count }}</h3>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="card shadow-sm bg-light border-0">
+                    <div class="card-body text-center">
+                        <h6 class="text-muted mb-2">Статус системы</h6>
+                        <h3 class="fw-bold {% if has_anomalies %}text-danger{% else %}text-success{% endif %}">
+                            {% if has_anomalies %}Требуется внимание{% else %}Норма{% endif %}
+                        </h3>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="card shadow-sm mb-4">
+            <div class="card-body p-0">
+                {{ plot_div_3d|safe }}
+            </div>
+        </div>
+
+        <!-- Секция суточной аналитики -->
+        <div class="row mb-4">
+            <div class="col-md-12">
+                <div class="card shadow-sm">
+                    <div class="card-header bg-white fw-bold">
+                        Суточная аналитика и распределение режимов
+                    </div>
+                    <div class="card-body p-0">
+                        <div class="row align-items-center">
+                            <div class="col-md-6">
+                                {{ plot_div_pie|safe }}
+                            </div>
+                            <div class="col-md-6">
+                                <div class="p-4">
+                                    <h5>Рекомендации:</h5>
+                                    <ul class="list-group list-group-flush">
+                                        {% if has_anomalies %}
+                                        <li class="list-group-item list-group-item-danger">
+                                            <strong>Внимание:</strong> Обнаружены критические аномалии. Рекомендуется проверить оборудование на предмет физических повреждений или сбоев в электронике.
+                                        </li>
+                                        {% else %}
+                                        <li class="list-group-item list-group-item-success">
+                                            <strong>Стабильность:</strong> Система работает в штатном режиме. Аномалий не обнаружено.
+                                        </li>
+                                        {% endif %}
+                                        <li class="list-group-item">
+                                            <strong>Оптимизация:</strong> Анализ распределения режимов позволяет оценить эффективность использования площади установки в зависимости от погодных условий.
+                                        </li>
+                                    </ul>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<div class="row justify-content-center mb-5">
+    <div class="col-md-12">
+        <div class="accordion" id="rawDataAccordion">
+            <div class="accordion-item shadow-sm">
+                <h2 class="accordion-header" id="headingOne">
+                    <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapseOne" aria-expanded="false" aria-controls="collapseOne">
+                        Показать все исходные данные (Таблица)
+                    </button>
+                </h2>
+                <div id="collapseOne" class="accordion-collapse collapse" aria-labelledby="headingOne" data-bs-parent="#rawDataAccordion">
+                    <div class="accordion-body p-0">
+                        <div class="table-responsive">
+                            {{ plot_div_table|safe }}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,28 @@
+{% extends 'analytics/base.html' %}
+
+{% block title %}Удаление панели{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-6">
+        <div class="card shadow-sm border-danger">
+            <div class="card-header bg-danger text-white">
+                <h4 class="mb-0">Подтверждение удаления</h4>
+            </div>
+            <div class="card-body text-center py-5">
+                <img src="https://cdn-icons-png.flaticon.com/512/564/564619.png" width="80" class="mb-4 opacity-50">
+                <h5>Вы действительно хотите удалить панель <strong>{{ panel.name }}</strong>?</h5>
+                <p class="text-muted">Это действие необратимо. Все связанные метрики и результаты анализа будут удалены.</p>
+                
+                <form method="post" class="mt-4">
+                    {% csrf_token %}
+                    <div class="d-flex justify-content-center gap-3">
+                        <a href="{% url 'dashboard' %}" class="btn btn-secondary">Отмена</a>
+                        <button type="submit" class="btn btn-danger">Да, удалить</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

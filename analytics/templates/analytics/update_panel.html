@@ -1,0 +1,185 @@
+{% extends 'analytics/base.html' %}
+
+{% block title %}Обновление данных: {{ panel.name }}{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-8">
+        <div class="card shadow-sm">
+            <div class="card-header bg-info text-white">
+                <h4 class="mb-0">Добавление данных для панели: {{ panel.name }}</h4>
+            </div>
+            <div class="card-body">
+                <p class="text-muted">Вы можете загрузить один или несколько CSV-файлов, чтобы дополнить историю измерений для этой конкретной установки.</p>
+
+                <form method="post" enctype="multipart/form-data" action="{% url 'process_panel_update' panel.id %}" class="mt-4" id="updateForm">
+                    {% csrf_token %}
+                    <div class="mb-3">
+                        <label class="form-label">Название панели</label>
+                        <input type="text" class="form-control" value="{{ panel.name }}" readonly disabled>
+                        <div class="form-text text-muted">Данные будут добавлены к существующей панели.</div>
+                    </div>
+                    <div class="mb-3">
+                        <label for="model_choice" class="form-label">Модель классификации</label>
+                        <select name="model_choice" id="model_choice" class="form-select">
+                            <option value="mlp_model.keras" selected>Стандартная MLP модель</option>
+                            <option value="mlp_model_agg.keras">Агломеративная модель (Agg)</option>
+                            <option value="mlp_model_kmeans_if.keras">K-Means модель (IF)</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label for="files" class="form-label">Выберите файлы .csv</label>
+                        <input type="file" name="files" class="form-control" id="files" multiple required>
+                    </div>
+                    <div class="d-flex gap-2">
+                        <button type="button" id="btnStartAnalysis" class="btn btn-success w-100">Добавить данные и запустить анализ</button>
+                        <a href="{% url 'dashboard' %}" class="btn btn-outline-secondary">Отмена</a>
+                    </div>
+                </form>
+
+                {% if error %}
+                <div class="alert alert-danger mt-3">{{ error }}</div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal for Column Mapping -->
+<div class="modal fade" id="mappingModal" tabindex="-1" aria-labelledby="mappingModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header bg-dark text-white">
+                <h5 class="modal-title" id="mappingModalLabel">Сопоставление колонок (Data Mapping)</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p class="text-muted mb-4">Пожалуйста, выберите из списка колонок вашего файла те, которые соответствуют параметрам системы.</p>
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <label class="form-label fw-bold">Дата и время (Timestamp)</label>
+                        <select id="map_timestamp" class="form-select mapping-select"></select>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label fw-bold">Инсоляция (POA / Irradiance)</label>
+                        <select id="map_poa" class="form-select mapping-select"></select>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label fw-bold">Температура модуля (Temp)</label>
+                        <select id="map_temp" class="form-select mapping-select"></select>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label fw-bold">Мощность AC (Power)</label>
+                        <select id="map_power" class="form-select mapping-select"></select>
+                    </div>
+                </div>
+                <div id="mappingError" class="alert alert-danger mt-3 d-none"></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+                <button type="button" id="btnConfirmMapping" class="btn btn-primary">Подтвердить и запустить</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const btnStart = document.getElementById('btnStartAnalysis');
+    const updateForm = document.getElementById('updateForm');
+    const mappingModal = new bootstrap.Modal(document.getElementById('mappingModal'));
+    const btnConfirm = document.getElementById('btnConfirmMapping');
+    
+    btnStart.addEventListener('click', async function() {
+        const fileInput = document.getElementById('files');
+        if (fileInput.files.length === 0) {
+            alert('Пожалуйста, выберите хотя бы один файл');
+            return;
+        }
+
+        const formData = new FormData();
+        formData.append('file', fileInput.files[0]);
+
+        try {
+            const response = await fetch("{% url 'get_csv_headers' %}", {
+                method: 'POST',
+                body: formData,
+                headers: {
+                    'X-CSRFToken': '{{ csrf_token }}'
+                }
+            });
+
+            if (!response.ok) throw new Error('Ошибка при получении заголовков файла');
+            
+            const data = await response.json();
+            populateMapping(data.columns, data.suggestions);
+            mappingModal.show();
+        } catch (e) {
+            alert(e.message);
+        }
+    });
+
+    function populateMapping(columns, suggestions) {
+        const selectors = {
+            'timestamp': document.getElementById('map_timestamp'),
+            'poa_irradiance': document.getElementById('map_poa'),
+            'module_temp': document.getElementById('map_temp'),
+            'ac_power': document.getElementById('map_power')
+        };
+
+        Object.values(selectors).forEach(sel => sel.innerHTML = '<option value="">-- Выберите колонку --</option>');
+
+        columns.forEach(col => {
+            Object.values(selectors).forEach(sel => {
+                const opt = document.createElement('option');
+                opt.value = col;
+                opt.textContent = col;
+                sel.appendChild(opt);
+            });
+        });
+
+        for (const [key, value] of Object.entries(suggestions)) {
+            if (value && selectors[key]) {
+                selectors[key].value = value;
+            }
+        }
+    }
+
+    btnConfirm.addEventListener('click', function() {
+        const mapping = {
+            timestamp: document.getElementById('map_timestamp').value,
+            poa: document.getElementById('map_poa').value,
+            temp: document.getElementById('map_temp').value,
+            power: document.getElementById('map_power').value
+        };
+
+        if (!mapping.timestamp || !mapping.poa || !mapping.temp || !mapping.power) {
+            const errDiv = document.getElementById('mappingError');
+            errDiv.textContent = 'Пожалуйста, выберите все обязательные колонки';
+            errDiv.classList.remove('d-none');
+            return;
+        }
+
+        document.getElementById('mappingError').classList.add('d-none');
+
+        const hiddenInputs = {
+            'map_timestamp': mapping.timestamp,
+            'map_poa': mapping.poa,
+            'map_temp': mapping.temp,
+            'map_power': mapping.power
+        };
+
+        for (const [name, value] of Object.entries(hiddenInputs)) {
+            const input = document.createElement('input');
+            input.type = 'hidden';
+            input.name = name;
+            input.value = value;
+            updateForm.appendChild(input);
+        }
+
+        mappingModal.hide();
+        updateForm.submit();
+    });
+});
+</script>
+{% endblock %}

@@ -1,0 +1,25 @@
+{% extends 'analytics/base.html' %}
+
+{% block title %}Регистрация{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-5">
+        <div class="card shadow-sm">
+            <div class="card-header bg-success text-white">
+                <h4 class="mb-0">Создать аккаунт</h4>
+            </div>
+            <div class="card-body">
+                <form method="post">
+                    {% csrf_token %}
+                    {{ form.as_p }}
+                    <button type="submit" class="btn btn-success w-100">Зарегистрироваться</button>
+                </form>
+                <div class="text-center mt-3">
+                    <span>Уже есть аккаунт? <a href="{% url 'login' %}">Войти</a></span>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

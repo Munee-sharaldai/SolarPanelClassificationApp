@@ -1,0 +1,219 @@
+{% extends 'analytics/base.html' %}
+
+{% block title %}Анализ выработки энергии{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-8">
+        <div class="card shadow-sm">
+            <div class="card-header bg-primary text-white">
+                <h4 class="mb-0">Загрузка данных СЭС</h4>
+            </div>
+            <div class="card-body">
+                <p class="text-muted">Загрузите CSV-файл с показаниями датчиков (должны быть колонки с инсоляцией, температурой и мощностью) для запуска ИИ-анализа.</p>
+
+                <form method="post" enctype="multipart/form-data" class="mt-4" id="uploadForm">
+                    {% csrf_token %}
+                    <div class="mb-3">
+                        <label for="panel_name" class="form-label">Название панели / Установки</label>
+                        <input type="text" name="panel_name" class="form-control" id="panel_name" placeholder="Например: Северный сектор 1" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="model_choice" class="form-label">Модель классификации</label>
+                        <select name="model_choice" id="model_choice" class="form-select">
+                            <option value="mlp_model.keras" selected>Модель смесей Гаусса (GMM)</option>
+                            <option value="mlp_model_agg.keras">Агломеративная модель (Agg)</option>
+                            <option value="mlp_model_kmeans_if.keras">K-Means+Isolation Forest модель</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label for="file" class="form-label">Выберите файлы .csv</label>
+                        <input type="file" name="files" class="form-control" id="file" multiple required>
+                    </div>
+                    <button type="button" id="btnStartAnalysis" class="btn btn-success w-100">Запустить анализ</button>
+                </form>
+
+                {% if error %}
+                <div class="alert alert-danger mt-3">{{ error }}</div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal for Column Mapping -->
+<div class="modal fade" id="mappingModal" tabindex="-1" aria-labelledby="mappingModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header bg-dark text-white">
+                <h5 class="modal-title" id="mappingModalLabel">Сопоставление колонок (Data Mapping)</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p class="text-muted mb-4">Пожалуйста, выберите из списка колонок вашего файла те, которые соответствуют параметрам системы.</p>
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <label class="form-label fw-bold">Дата и время (Timestamp)</label>
+                        <select id="map_timestamp" class="form-select mapping-select"></select>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label fw-bold">Инсоляция (POA / Irradiance)</label>
+                        <select id="map_poa" class="form-select mapping-select"></select>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label fw-bold">Температура модуля (Temp)</label>
+                        <select id="map_temp" class="form-select mapping-select"></select>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label fw-bold">Мощность AC (Power)</label>
+                        <select id="map_power" class="form-select mapping-select"></select>
+                    </div>
+                </div>
+                <div id="mappingError" class="alert alert-danger mt-3 d-none"></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+                <button type="button" id="btnConfirmMapping" class="btn btn-primary">Подтвердить и запустить</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const btnStart = document.getElementById('btnStartAnalysis');
+    const uploadForm = document.getElementById('uploadForm');
+    const mappingModal = new bootstrap.Modal(document.getElementById('mappingModal'));
+    const btnConfirm = document.getElementById('btnConfirmMapping');
+    
+    btnStart.addEventListener('click', async function() {
+        const fileInput = document.getElementById('file');
+        if (fileInput.files.length === 0) {
+            alert('Пожалуйста, выберите хотя бы один файл');
+            return;
+        }
+
+        // Only use the first file to determine headers
+        const formData = new FormData();
+        formData.append('file', fileInput.files[0]);
+
+        try {
+            const response = await fetch("{% url 'get_csv_headers' %}", {
+                method: 'POST',
+                body: formData,
+                headers: {
+                    'X-CSRFToken': '{{ csrf_token }}'
+                }
+            });
+
+            if (!response.ok) throw new Error('Ошибка при получении заголовков файла');
+            
+            const data = await response.json();
+            populateMapping(data.columns, data.suggestions);
+            mappingModal.show();
+        } catch (e) {
+            alert(e.message);
+        }
+    });
+
+    function populateMapping(columns, suggestions) {
+        const selectors = {
+            'timestamp': document.getElementById('map_timestamp'),
+            'poa_irradiance': document.getElementById('map_poa'),
+            'module_temp': document.getElementById('map_temp'),
+            'ac_power': document.getElementById('map_power')
+        };
+
+        Object.values(selectors).forEach(sel => sel.innerHTML = '<option value="">-- Выберите колонку --</option>');
+
+        columns.forEach(col => {
+            Object.values(selectors).forEach(sel => {
+                const opt = document.createElement('option');
+                opt.value = col;
+                opt.textContent = col;
+                sel.appendChild(opt);
+            });
+        });
+
+        // Apply suggestions
+        for (const [key, value] of Object.entries(suggestions)) {
+            if (value && selectors[key]) {
+                selectors[key].value = value;
+            }
+        }
+    }
+
+    btnConfirm.addEventListener('click', function() {
+        const mapping = {
+            timestamp: document.getElementById('map_timestamp').value,
+            poa: document.getElementById('map_poa').value,
+            temp: document.getElementById('map_temp').value,
+            power: document.getElementById('map_power').value
+        };
+
+        if (!mapping.timestamp || !mapping.poa || !mapping.temp || !mapping.power) {
+            const errDiv = document.getElementById('mappingError');
+            errDiv.textContent = 'Пожалуйста, выберите все обязательные колонки';
+            errDiv.classList.remove('d-none');
+            return;
+        }
+
+        document.getElementById('mappingError').classList.add('d-none');
+
+        // Add mapping to form and submit
+        const finalFormData = new FormData(uploadForm);
+        finalFormData.append('map_timestamp', mapping.timestamp);
+        finalFormData.append('map_poa', mapping.poa);
+        finalFormData.append('map_temp', mapping.temp);
+        finalFormData.append('map_power', mapping.power);
+
+        // Since we want the actual form submission (with redirect), we'll just add hidden inputs and submit normally
+        const hiddenInputs = {
+            'map_timestamp': mapping.timestamp,
+            'map_poa': mapping.poa,
+            'map_temp': mapping.temp,
+            'map_power': mapping.power
+        };
+
+        for (const [name, value] of Object.entries(hiddenInputs)) {
+            const input = document.createElement('input');
+            input.type = 'hidden';
+            input.name = name;
+            input.value = value;
+            uploadForm.appendChild(input);
+        }
+
+        mappingModal.hide();
+        uploadForm.submit();
+    });
+});
+</script>
+
+{% if plot_div %}
+<div class="row mt-5 justify-content-center">
+    <div class="col-md-12">
+        <div class="card shadow-sm">
+            <div class="card-header bg-dark text-white d-flex justify-content-between align-items-center">
+                <h4 class="mb-0">Результаты анализа</h4>
+                <div class="badge bg-info text-dark">Всего точек: {{ total_points }}</div>
+            </div>
+            <div class="card-body">
+                {% if has_anomalies %}
+                <div class="alert alert-warning mb-4">
+                    <strong>Внимание!</strong> Обнаружено аномалий: <strong>{{ anomaly_count }}</strong>. Рекомендуется проверить оборудование.
+                </div>
+                {% else %}
+                <div class="alert alert-success mb-4">
+                    Аномалий не обнаружено. Система работает в штатном режиме.
+                </div>
+                {% endif %}
+
+                <div class="plotly-container">
+                    {{ plot_div|safe }}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+{% endblock %}

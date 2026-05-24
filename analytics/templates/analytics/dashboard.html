@@ -1,0 +1,44 @@
+{% extends 'analytics/base.html' %}
+
+{% block title %}Мои панели{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-10">
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <h2>Мои солнечные панели</h2>
+            <a href="{% url 'upload_csv' %}" class="btn btn-primary">Добавить данные новой панели</a>
+        </div>
+
+        {% if panels %}
+        <div class="row">
+            {% for panel in panels %}
+            <div class="col-md-4 mb-4">
+                <div class="card shadow-sm h-100">
+                    <div class="card-body">
+                        <h5 class="card-title">{{ panel.name }}</h5>
+                        <p class="card-text text-muted">
+                            Место: {{ panel.location }}<br>
+                            Мощность: {{ panel.capacity }} Вт
+                        </p>
+                        <div class="d-grid gap-2">
+                            <a href="{% url 'panel_analysis' panel.id %}" class="btn btn-info btn-sm text-white">Просмотр анализа</a>
+                            <a href="{% url 'update_panel_data' panel.id %}" class="btn btn-outline-secondary btn-sm">Загрузить новые данные</a>
+                            <a href="{% url 'delete_panel' panel.id %}" class="btn btn-outline-danger btn-sm">Удалить панель</a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <div class="text-center py-5">
+            <img src="https://cdn-icons-png.flaticon.com/512/2531/2531575.png" width="100" class="mb-3 opacity-50">
+            <h4>У вас пока нет сохраненных панелей</h4>
+            <p class="text-muted">Загрузите первый CSV-файл, чтобы начать анализ.</p>
+            <a href="{% url 'upload_csv' %}" class="btn btn-primary mt-3">Перейти к загрузке</a>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}
